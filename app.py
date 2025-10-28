@@ -1,58 +1,79 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
 import joblib
 import json
 import os
 
-# ---- Load Dataset ----
-data = pd.read_csv("earthquake.csv")  # ✅ your dataset file name
+# ---------------------------
+# 🌍 Earthquake Alert Prediction App
+# ---------------------------
+st.set_page_config(page_title="Earthquake Alert Prediction", layout="centered")
 
-# Try to automatically detect target column
-target_col = None
-for col in data.columns:
-    if col.lower() in ['alert', 'target', 'label', 'class']:
-        target_col = col
-        break
-
-if target_col is None:
-    raise ValueError("⚠️ Please specify your target column manually in the code!")
-
-# ---- Preprocess ----
-X = data.select_dtypes(include=[np.number])
-y = data[target_col]
-
-imputer = SimpleImputer(strategy='median')
-X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
-
-scaler = StandardScaler()
-X_scaled = pd.DataFrame(scaler.fit_transform(X_imputed), columns=X.columns)
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y, test_size=0.2, random_state=42
+st.title("🌍 Earthquake Alert Prediction App")
+st.markdown(
+    """
+    This app uses a trained **Machine Learning model** to predict earthquake alert levels.  
+    Enter the earthquake parameters below to get the prediction.
+    """
 )
 
-# ---- Train Model ----
-model = RandomForestClassifier(n_estimators=200, random_state=42)
-model.fit(X_train, y_train)
+# ---------------------------
+# Load Model and Preprocessors
+# ---------------------------
+model_path = "model/rf_model.joblib"
+imputer_path = "model/imputer.joblib"
+scaler_path = "model/scaler.joblib"
+meta_path = "model/metadata.json"
 
-# ---- Evaluate ----
-preds = model.predict(X_test)
-print("✅ Accuracy:", accuracy_score(y_test, preds))
-print("\nClassification Report:\n", classification_report(y_test, preds))
+# Check if model files exist
+if not all(os.path.exists(p) for p in [model_path, imputer_path, scaler_path, meta_path]):
+    st.error("⚠️ Model files not found! Please run `train_model.py` first to generate the model.")
+    st.stop()
 
-# ---- Save Model ----
-os.makedirs("model", exist_ok=True)
-joblib.dump(model, "model/rf_model.joblib")
-joblib.dump(imputer, "model/imputer.joblib")
-joblib.dump(scaler, "model/scaler.joblib")
+# Load model and metadata
+model = joblib.load(model_path)
+imputer = joblib.load(imputer_path)
+scaler = joblib.load(scaler_path)
 
-meta = {"features": list(X.columns), "target": target_col}
-with open("model/metadata.json", "w") as f:
-    json.dump(meta, f)
+with open(meta_path, "r") as f:
+    meta = json.load(f)
 
-print("🎉 Model and preprocessors saved in 'model/' folder!")
+features = meta["features"]
+target = meta["target"]
+
+# ---------------------------
+# User Input Section
+# ---------------------------
+st.subheader("🧾 Input Earthquake Parameters")
+
+user_input = {}
+for feature in features:
+    user_input[feature] = st.number_input(f"{feature}", value=0.0)
+
+# ---------------------------
+# Prediction
+# ---------------------------
+if st.button("🔮 Predict"):
+    input_df = pd.DataFrame([user_input])
+    
+    # Apply preprocessing in same order as training
+    input_df = pd.DataFrame(imputer.transform(input_df), columns=features)
+    input_df = pd.DataFrame(scaler.transform(input_df), columns=features)
+    
+    prediction = model.predict(input_df)[0]
+    
+    st.success(f"🚨 Predicted Alert Level: **{prediction}**")
+
+    st.markdown("---")
+    st.caption("Model trained using Random Forest Classifier")
+
+# ---------------------------
+# Footer
+# ---------------------------
+st.markdown(
+    """
+    ---
+    **Developed by:** Your Name  
+    **Dataset:** Earthquake Alert Prediction Dataset (Kaggle)
+    """
+)
